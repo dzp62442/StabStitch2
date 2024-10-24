@@ -26,8 +26,8 @@ import matplotlib.pyplot as plt
 plt.rcParams['axes.unicode_minus']=False
 
 
-last_path = os.path.abspath(os.path.join(os.path.dirname("__file__"), os.path.pardir))
-MODEL_DIR = os.path.join(last_path, 'full_model_ssd')
+last_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # 项目文件夹
+MODEL_DIR = os.path.join(last_path, 'Full_model_inference', 'full_model_ssd')
 
 
 
@@ -396,7 +396,7 @@ def test(args):
         print(NOF/(time.time() - start_time1))
 
         #
-        stable_list, out_width, out_height = get_stable_sqe(img1_hr_tensor_list, img2_hr_tensor_list, smooth_mesh1, smooth_mesh2)
+        stable_list, out_width, out_height = get_stable_sqe(img1_hr_tensor_list, img2_hr_tensor_list, smooth_mesh1, smooth_mesh2, args.warp_mode, args.fusion_mode)
 
 
         print("fps (warping & average blending):")
@@ -411,7 +411,7 @@ def test(args):
 
         # get the stable video
         for k in range(len(stable_list)):
-            ave_fusion = stable_list[k].cpu().numpy().transpose(1,2,0)
+            ave_fusion = stable_list[k]
             media_writer.write(ave_fusion.astype(np.uint8 ))
 
 
@@ -432,7 +432,7 @@ if __name__=="__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--gpu', type=str, default='0')
-    parser.add_argument('--test_path', type=str, default='/opt/data/private/nl/Data/StabStitch-D/testing/')
+    parser.add_argument('--test_path', type=str, default=os.path.join(last_path, 'Datasets/StabStitch-D/testing/'))
     parser.add_argument('--output_path', type=str, default='../results_ssd/')
 
     # optional parameter: 'NORMAL' or 'FAST'
@@ -443,11 +443,6 @@ if __name__=="__main__":
     # AVERAGE: faster but more artifacts
     # LINEAR: slower but less artifacts
     parser.add_argument('--fusion_mode', type=str, default='AVERAGE')
-
-
-
-
-
 
     print('<==================== Loading data ===================>\n')
 

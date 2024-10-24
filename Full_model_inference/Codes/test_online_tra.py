@@ -26,8 +26,8 @@ import matplotlib.pyplot as plt
 plt.rcParams['axes.unicode_minus']=False
 
 
-last_path = os.path.abspath(os.path.join(os.path.dirname("__file__"), os.path.pardir))
-MODEL_DIR = os.path.join(last_path, 'full_model_tra')
+last_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # 项目文件夹
+MODEL_DIR = os.path.join(last_path, 'Full_model_inference', 'full_model_tra')
 
 
 
@@ -406,15 +406,18 @@ def test(args):
 
         print(out_width)
         print(out_height)
-        media_writer = cv2.VideoWriter(media_path, fourcc, fps, (out_width, out_height))
+        # media_writer = cv2.VideoWriter(media_path, fourcc, fps, (out_width, out_height))
 
 
         # get the stable video
         for k in range(len(stable_list)):
-            media_writer.write(stable_list[k].astype(np.uint8 ))
+            # media_writer.write(stable_list[k].astype(np.uint8 ))
+            show_img = cv2.resize(stable_list[k].astype(np.uint8 ), (960, 720))
+            cv2.imshow('stable', show_img)
+            cv2.waitKey(10)
 
 
-        media_writer.release()
+        # media_writer.release()
         print("FPS (write into video):")
         print(NOF/(time.time() - start_time1))
 
@@ -431,7 +434,7 @@ if __name__=="__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--gpu', type=str, default='0')
-    parser.add_argument('--test_path', type=str, default='/opt/data/private/nl/Data/Tra-Dataset2/')
+    parser.add_argument('--test_path', type=str, default=os.path.join(last_path, 'Datasets/TraditionalDataset/'))
     parser.add_argument('--output_path', type=str, default='../results_tra/')
 
     # optional parameter: 'NORMAL' or 'FAST'
@@ -442,10 +445,6 @@ if __name__=="__main__":
     # AVERAGE: faster but more artifacts
     # LINEAR: slower but less artifacts
     parser.add_argument('--fusion_mode', type=str, default='LINEAR')
-
-
-
-
 
 
     print('<==================== Loading data ===================>\n')

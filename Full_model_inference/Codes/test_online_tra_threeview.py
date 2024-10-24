@@ -25,8 +25,8 @@ grid_w = grid_res.GRID_W
 import matplotlib.pyplot as plt
 plt.rcParams['axes.unicode_minus']=False
 
-last_path = os.path.abspath(os.path.join(os.path.dirname("__file__"), os.path.pardir))
-MODEL_DIR = os.path.join(last_path, 'full_model_tra')
+last_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # 项目文件夹
+MODEL_DIR = os.path.join(last_path, 'Full_model_inference', 'full_model_tra')
 
 
 
@@ -527,9 +527,10 @@ if __name__=="__main__":
 
     # the path to load input videos
     # Note: video1 should overlap with video2, and video2 should overlap with video3
-    parser.add_argument('--video1_path', type=str, default='/opt/data/private/nl/Data/Tra-Dataset2/case5_2/video1/')
-    parser.add_argument('--video2_path', type=str, default='/opt/data/private/nl/Data/Tra-Dataset2/case5_2/video2/')
-    parser.add_argument('--video3_path', type=str, default='/opt/data/private/nl/Data/Tra-Dataset2/case5_3/video2/')
+    parser.add_argument('--test_path', type=str, default=os.path.join(last_path, 'Datasets/TraditionalDataset/'))
+    parser.add_argument('--video1_path', type=str, default=os.path.join(last_path, 'Datasets/TraditionalDataset/case5_2/video1/'))
+    parser.add_argument('--video2_path', type=str, default=os.path.join(last_path, 'Datasets/TraditionalDataset/case5_2/video2/'))
+    parser.add_argument('--video3_path', type=str, default=os.path.join(last_path, 'Datasets/TraditionalDataset/case5_3/video2/'))
 
     # optional parameter: 'NORMAL' or 'FAST'
     # FAST: use F.grid_sample to interpolate. It's fast, but may produce thin black boundary.
