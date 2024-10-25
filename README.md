@@ -1,3 +1,15 @@
+# 1 环境配置
+
+```shell
+conda create -n stabstitch python=3.8.19
+conda activate stabstitch
+pip install torch==1.13.1+cu116 torchvision==0.14.1+cu116 torchaudio==0.13.1 -f https://download.pytorch.org/whl/cu116/torch_stable.html
+pip install numpy==1.19.5  # 指定numpy版本，不能超过1.20
+pip install -r requirements.txt  
+```
+
+------
+
 # <p align="center">StabStitch++: Unsupervised Online Video Stitching with Spatiotemporal Bidirectional Warps
 
 ## Introduction

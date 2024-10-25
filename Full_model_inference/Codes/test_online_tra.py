@@ -406,18 +406,18 @@ def test(args):
 
         print(out_width)
         print(out_height)
-        # media_writer = cv2.VideoWriter(media_path, fourcc, fps, (out_width, out_height))
+        media_writer = cv2.VideoWriter(media_path, fourcc, fps, (out_width, out_height))
 
 
         # get the stable video
         for k in range(len(stable_list)):
-            # media_writer.write(stable_list[k].astype(np.uint8 ))
-            show_img = cv2.resize(stable_list[k].astype(np.uint8 ), (960, 720))
-            cv2.imshow('stable', show_img)
-            cv2.waitKey(10)
+            media_writer.write(stable_list[k].astype(np.uint8 ))
+            # show_img = cv2.resize(stable_list[k].astype(np.uint8 ), (960, 720))
+            # cv2.imshow('stable', show_img)
+            # cv2.waitKey(10)
 
 
-        # media_writer.release()
+        media_writer.release()
         print("FPS (write into video):")
         print(NOF/(time.time() - start_time1))
 
