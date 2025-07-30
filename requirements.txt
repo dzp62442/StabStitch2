@@ -29,3 +29,4 @@ protobuf==3.17.0
 pillow==9.1.1
 yacs==0.1.6
 torch-tb-profiler
+omegaconf

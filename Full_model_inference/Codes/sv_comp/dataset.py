@@ -16,7 +16,6 @@ class MultiWarpDataset(Dataset):
         self.data_path = config['data_path']
         self.sub_datasets = config['sub_datasets']
         self.input_img_num = config['input_img_num']
-        self.use_loader_data_aug = config['use_loader_data_aug']
         self.mode = 'training' if is_train else 'testing'
         self.intrinsics = intrinsics
         self.datas = OrderedDict()
@@ -75,8 +74,6 @@ class MultiWarpDataset(Dataset):
 
     def __getitem__(self, index):
         input_index = [x for x in range(self.input_img_num)]  # 读取的所有图像的序号，[0, self.input_img_num - 1]
-        if self.use_loader_data_aug:
-            input_index = self.loader_data_aug(input_index, index)
 
         input_imgs, input_masks = [], []
         for i in range(self.input_img_num):
@@ -99,9 +96,9 @@ class MultiWarpDataset(Dataset):
             else:
                 input_mask = np.ones((input_img.shape[0], input_img.shape[1]), np.uint8)  # 生成与图像大小相同的掩码
             # 将图像缩放到网络输入尺寸
-            if (self.net_input_height != input_img.shape[0] or self.net_input_width != input_img.shape[1]):
-                input_img = cv2.resize(input_img, (self.net_input_width, self.net_input_height))
-                input_mask = cv2.resize(input_mask, (self.net_input_width, self.net_input_height))
+            # if (self.net_input_height != input_img.shape[0] or self.net_input_width != input_img.shape[1]):
+            #     input_img = cv2.resize(input_img, (self.net_input_width, self.net_input_height))
+            #     input_mask = cv2.resize(input_mask, (self.net_input_width, self.net_input_height))
             # 直接返回 cv 格式
             input_imgs.append(input_img)
             input_masks.append(input_mask)
@@ -142,15 +139,3 @@ class MultiWarpDataset(Dataset):
         mask = np.ones((init_img.shape[0], init_img.shape[1]), np.uint8)  # 生成与图像大小相同的掩码
         mask_remaped = cv2.remap(mask, xmap, ymap, cv2.INTER_NEAREST, cv2.BORDER_CONSTANT)  # 使用映射矩阵对掩码进行投影变换
         return xmap, ymap, mask_remaped
-    
-    # 加载数据时进行数据增广，包括滑动窗口平移、左右顺序反转，在CPU上处理
-    def loader_data_aug(self, input_index, index):
-        # 滑动窗口平移
-        total_img_num = len(self.datas[self.data_keys[index]]['image'])
-        delta = random.randint(0, total_img_num - self.input_img_num)  # 滑动窗口的偏移量，[0, total_img_num - self.input_img_num]
-        input_index = [x + delta for x in input_index]
-        # 左右顺序反转
-        if random.randint(0,1) == 1:
-            input_index.reverse()
-
-        return input_index

@@ -25,6 +25,9 @@ grid_w = grid_res.GRID_W
 import matplotlib.pyplot as plt
 plt.rcParams['axes.unicode_minus']=False
 
+from sv_comp.dataset import MultiWarpDataset
+from omegaconf import OmegaConf
+import yaml
 
 last_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # 项目文件夹
 MODEL_DIR = os.path.join(last_path, 'Full_model_inference', 'full_model_ssd')
@@ -160,6 +163,13 @@ def test(args):
     os.environ['CUDA_DEVICES_ORDER'] = "PCI_BUS_ID"
     os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
 
+    # 加载数据集
+    sv_comp_cfg = OmegaConf.load('sv_comp/sv_comp.yaml')
+    with open('sv_comp/intrinsics.yaml', 'r', encoding='utf-8') as file:
+        intrinsics = yaml.safe_load(file)
+    dataset = MultiWarpDataset(config=sv_comp_cfg, intrinsics=intrinsics, is_train=False)
+    video_length = 10  # 一张图像复制若干次作为一个视频
+
     # define the network
     spatial_net = SpatialNet()
     temporal_net = TemporalNet()
@@ -172,7 +182,6 @@ def test(args):
     #load the existing models if it exists
     ckpt_list = glob.glob(MODEL_DIR + "/*.pth")
     ckpt_list.sort()
-
     if len(ckpt_list) == 3:
         # load spatial warp model
         spatial_model_path = MODEL_DIR + "/spatial_warp.pth"
@@ -193,230 +202,208 @@ def test(args):
         print('No checkpoint found!')
         exit(0)
 
-
-
-
     spatial_net.eval()
     temporal_net.eval()
     smooth_net.eval()
 
     print("##################start testing#######################")
 
-    video_name_list = glob.glob(os.path.join(args.test_path, '*'))
-    video_name_list = sorted(video_name_list)
-    print(video_name_list)
-
     count = 0
 
+    for idx in range(len(dataset)):
+        # if idx > 5:
+        #     break
+        sample = dataset[idx]
+        input_imgs, input_masks = sample[0], sample[1]
+        middle_stitch_results = None  # 中间拼接结果
+        origin_w, origin_h = input_imgs[0].shape[1], input_imgs[0].shape[0]
 
+        print(f'---------------{idx}---------------')
 
-    for i in range(len(video_name_list)):
-        print()
-        print(i)
-        print(video_name_list[i])
+        for j in range(sv_comp_cfg['input_img_num'] - 1):
+            # 创建保存结果文件夹
+            batch_path = dataset.get_path(idx)
+            path_result = os.path.join(batch_path, 'stabstitch2/')
+            os.makedirs(path_result, exist_ok=True)
+            path_warp = os.path.join(batch_path, 'warp/')
+            os.makedirs(path_warp, exist_ok=True)
+            path_mask = os.path.join(batch_path, 'mask/')
+            os.makedirs(path_mask, exist_ok=True)
 
-        #define an online buffer (len == 7)
-        buffer_len = 7
-        tmotion_tensor_list1 = []
-        smotion_tensor_list1 = []
-        tmotion_tensor_list2 = []
-        smotion_tensor_list2 = []
-
-        # img name list
-        img1_name_list = glob.glob(os.path.join(video_name_list[i]+ "/video1/", '*.jpg'))
-        img2_name_list = glob.glob(os.path.join(video_name_list[i]+ "/video2/", '*.jpg'))
-        img1_name_list = sorted(img1_name_list)
-        img2_name_list = sorted(img2_name_list)
-
-
-        # prepare folders
-        if not os.path.exists(args.output_path):
-            os.makedirs(args.output_path)
-        video_name = video_name_list[i].split('/')[-1] + ".mp4"
-        media_path = args.output_path + video_name
-        fourcc = cv2.VideoWriter_fourcc('m', 'p', '4', 'v')
-        fps = 30
-
-
-
-        img1_tensor_list = []
-        img2_tensor_list = []
-        img1_hr_tensor_list = []
-        img2_hr_tensor_list = []
-
-        img_h = 360
-        img_w = 480
-        # load imgs
-        for k in range(0, len(img2_name_list)):
-
-            img1 = cv2.imread(img1_name_list[k])
-            # get high-resolution input
-            img1_hr = img1.astype(dtype=np.float32)
-            img1_hr = np.transpose(img1_hr, [2, 0, 1])
-            img1_hr_tensor = torch.tensor(img1_hr).unsqueeze(0)
-            img1_hr_tensor_list.append(img1_hr_tensor)
-            # get 360x480 input
-            img1 = cv2.resize(img1, (img_w, img_h))
-            img1 = img1.astype(dtype=np.float32)
-            img1 = np.transpose(img1, [2, 0, 1])
-            img1 = (img1 / 127.5) - 1.0
-            img1_tensor = torch.tensor(img1).unsqueeze(0)
-            img1_tensor_list.append(img1_tensor)
-
-            img2 = cv2.imread(img2_name_list[k])
-            # get high-resolution input
-            img2_hr = img2.astype(dtype=np.float32)
-            img2_hr = np.transpose(img2_hr, [2, 0, 1])
-            img2_hr_tensor = torch.tensor(img2_hr).unsqueeze(0)
-            img2_hr_tensor_list.append(img2_hr_tensor)
-            # get 360x480 input
-            img2 = cv2.resize(img2, (img_w, img_h))
-            img2 = img2.astype(dtype=np.float32)
-            img2 = np.transpose(img2, [2, 0, 1])
-            img2 = (img2 / 127.5) - 1.0
-            img2_tensor = torch.tensor(img2).unsqueeze(0)
-            img2_tensor_list.append(img2_tensor)
-
-
-        start_time1 = time.time()
-        NOF = len(img2_name_list)
-        # motion estimation
-        for k in range(0, len(img2_name_list)):
-
-            # step 1: spatial warp
-            with torch.no_grad():
-                spatial_batch_out = build_SpatialNet(spatial_net, img1_tensor_list[k].cuda(), img2_tensor_list[k].cuda())
-            smotion1 = spatial_batch_out['motion1']
-            smotion2 = spatial_batch_out['motion2']
-            smotion_tensor_list1.append(smotion1)
-            smotion_tensor_list2.append(smotion2)
-
-        # step 2: temporal warp
-        with torch.no_grad():
-            temporal_batch_out1 = build_TemporalNet(temporal_net, img1_tensor_list)
-            temporal_batch_out2 = build_TemporalNet(temporal_net, img2_tensor_list)
-        tmotion_tensor_list1 = temporal_batch_out1['motion_list']
-        tmotion_tensor_list2 = temporal_batch_out2['motion_list']
-
-
-        print("fps (spatial & temporal warp):")
-        print(NOF/(time.time() - start_time1))
-
-
-        ##############################################
-        #############   data preparation  ############
-        # converting tmotion (t-th frame) into tsmotion ( (t-1)-th frame )
-        rigid_mesh = get_rigid_mesh(1, img_h, img_w)
-        norm_rigid_mesh = get_norm_mesh(rigid_mesh, img_h, img_w)
-        smesh_list1 = []
-        smesh_list2 = []
-        tsmotion_list1 = []
-        tsmotion_list2 = []
-        for k in range(len(tmotion_tensor_list1)):
-            smotion1 = smotion_tensor_list1[k]
-            smesh1 = rigid_mesh + smotion1
-            smotion2 = smotion_tensor_list2[k]
-            smesh2 = rigid_mesh + smotion2
-            if k == 0:
-                tsmotion1 = smotion1.clone() * 0
-                tsmotion2 = smotion2.clone() * 0
+            # 生成待拼接的两路视频
+            if j == 0:
+                img1_list = [input_imgs[j]] * video_length
+                img2_list = [input_imgs[j+1]] * video_length
             else:
-                smotion1_1 = smotion_tensor_list1[k-1]
-                smesh1_1 = rigid_mesh + smotion1_1
-                tmotion1 = tmotion_tensor_list1[k]
-                tmesh1 = rigid_mesh + tmotion1
-                norm_smesh1_1 = get_norm_mesh(smesh1_1, img_h, img_w)
-                norm_tmesh1 = get_norm_mesh(tmesh1, img_h, img_w)
-                tsmesh1 = torch_tps_transform_point.transformer(norm_tmesh1, norm_rigid_mesh, norm_smesh1_1)
-                tsmotion1 = recover_mesh(tsmesh1, img_h, img_w) - smesh1
+                img1_list = middle_stitch_results
+                img2_list = [input_imgs[j+1]] * video_length
 
-                smotion2_1 = smotion_tensor_list2[k-1]
-                smesh2_1 = rigid_mesh + smotion2_1
-                tmotion2 = tmotion_tensor_list2[k]
-                tmesh2 = rigid_mesh + tmotion2
-                norm_smesh2_1 = get_norm_mesh(smesh2_1, img_h, img_w)
-                norm_tmesh2 = get_norm_mesh(tmesh2, img_h, img_w)
-                tsmesh2 = torch_tps_transform_point.transformer(norm_tmesh2, norm_rigid_mesh, norm_smesh2_1)
-                tsmotion2 = recover_mesh(tsmesh2, img_h, img_w) - smesh2
+            #define an online buffer (len == 7)
+            buffer_len = 7
+            tmotion_tensor_list1 = []
+            smotion_tensor_list1 = []
+            tmotion_tensor_list2 = []
+            smotion_tensor_list2 = []
+
+            img1_tensor_list = []
+            img2_tensor_list = []
+            img1_hr_tensor_list = []
+            img2_hr_tensor_list = []
+
+            img_h = 360
+            img_w = 480
+            # prepare imgs
+            for k in range(0, len(img2_list)):
+
+                img1 = img1_list[k]
+                if img1.shape[0] != origin_h or img1.shape[1] != origin_w:
+                    img1 = cv2.resize(img1, (origin_w, origin_h))
+                # get high-resolution input
+                img1_hr = img1.astype(dtype=np.float32)
+                img1_hr = np.transpose(img1_hr, [2, 0, 1])
+                img1_hr_tensor = torch.tensor(img1_hr).unsqueeze(0)
+                img1_hr_tensor_list.append(img1_hr_tensor)
+                # get 360x480 input
+                img1 = cv2.resize(img1, (img_w, img_h))
+                img1 = img1.astype(dtype=np.float32)
+                img1 = np.transpose(img1, [2, 0, 1])
+                img1 = (img1 / 127.5) - 1.0
+                img1_tensor = torch.tensor(img1).unsqueeze(0)
+                img1_tensor_list.append(img1_tensor)
+
+                img2 = img2_list[k]
+                if img2.shape[0] != origin_h or img2.shape[1] != origin_w:
+                    img2 = cv2.resize(img2, (origin_w, origin_h))
+                # get high-resolution input
+                img2_hr = img2.astype(dtype=np.float32)
+                img2_hr = np.transpose(img2_hr, [2, 0, 1])
+                img2_hr_tensor = torch.tensor(img2_hr).unsqueeze(0)
+                img2_hr_tensor_list.append(img2_hr_tensor)
+                # get 360x480 input
+                img2 = cv2.resize(img2, (img_w, img_h))
+                img2 = img2.astype(dtype=np.float32)
+                img2 = np.transpose(img2, [2, 0, 1])
+                img2 = (img2 / 127.5) - 1.0
+                img2_tensor = torch.tensor(img2).unsqueeze(0)
+                img2_tensor_list.append(img2_tensor)
 
 
-            # append
-            smesh_list1.append(smesh1)
-            smesh_list2.append(smesh2)
-            tsmotion_list1.append(tsmotion1)
-            tsmotion_list2.append(tsmotion2)
+            # motion estimation
+            for k in range(0, len(img2_list)):
 
+                # step 1: spatial warp
+                with torch.no_grad():
+                    spatial_batch_out = build_SpatialNet(spatial_net, img1_tensor_list[k].cuda(), img2_tensor_list[k].cuda())
+                smotion1 = spatial_batch_out['motion1']
+                smotion2 = spatial_batch_out['motion2']
+                smotion_tensor_list1.append(smotion1)
+                smotion_tensor_list2.append(smotion2)
 
-        # step 3: smooth warp
-        ori_mesh1 = 0
-        smooth_mesh1 = 0
-        delta_motion1 = 0
-
-        ori_mesh2 = 0
-        smooth_mesh2 = 0
-        delta_motion2 = 0
-
-        for k in range(len(tmotion_tensor_list1)-6):
-
-            tsmotion_sublist1 = tsmotion_list1[k:k+7]
-            tsmotion_sublist1[0] = tsmotion_sublist1[0] * 0
-
-            tsmotion_sublist2 = tsmotion_list2[k:k+7]
-            tsmotion_sublist2[0] = tsmotion_sublist2[0] * 0
-
-
+            # step 2: temporal warp
             with torch.no_grad():
-                smooth_batch_out = build_SmoothNet(smooth_net, tsmotion_sublist1, tsmotion_sublist2, smesh_list1[k:k+7], smesh_list2[k:k+7])
-
-            _ori_mesh1 = smooth_batch_out["ori_mesh1"]
-            _smooth_mesh1 = smooth_batch_out["smooth_mesh1"]
-
-            _ori_mesh2 = smooth_batch_out["ori_mesh2"]
-            _smooth_mesh2 = smooth_batch_out["smooth_mesh2"]
+                temporal_batch_out1 = build_TemporalNet(temporal_net, img1_tensor_list)
+                temporal_batch_out2 = build_TemporalNet(temporal_net, img2_tensor_list)
+            tmotion_tensor_list1 = temporal_batch_out1['motion_list']
+            tmotion_tensor_list2 = temporal_batch_out2['motion_list']
 
 
-            if k == 0:
-                ori_mesh1 = _ori_mesh1
-                smooth_mesh1 = _smooth_mesh1
+            ##############################################
+            #############   data preparation  ############
+            # converting tmotion (t-th frame) into tsmotion ( (t-1)-th frame )
+            rigid_mesh = get_rigid_mesh(1, img_h, img_w)
+            norm_rigid_mesh = get_norm_mesh(rigid_mesh, img_h, img_w)
+            smesh_list1 = []
+            smesh_list2 = []
+            tsmotion_list1 = []
+            tsmotion_list2 = []
+            for k in range(len(tmotion_tensor_list1)):
+                smotion1 = smotion_tensor_list1[k]
+                smesh1 = rigid_mesh + smotion1
+                smotion2 = smotion_tensor_list2[k]
+                smesh2 = rigid_mesh + smotion2
+                if k == 0:
+                    tsmotion1 = smotion1.clone() * 0
+                    tsmotion2 = smotion2.clone() * 0
+                else:
+                    smotion1_1 = smotion_tensor_list1[k-1]
+                    smesh1_1 = rigid_mesh + smotion1_1
+                    tmotion1 = tmotion_tensor_list1[k]
+                    tmesh1 = rigid_mesh + tmotion1
+                    norm_smesh1_1 = get_norm_mesh(smesh1_1, img_h, img_w)
+                    norm_tmesh1 = get_norm_mesh(tmesh1, img_h, img_w)
+                    tsmesh1 = torch_tps_transform_point.transformer(norm_tmesh1, norm_rigid_mesh, norm_smesh1_1)
+                    tsmotion1 = recover_mesh(tsmesh1, img_h, img_w) - smesh1
 
-                ori_mesh2 = _ori_mesh2
-                smooth_mesh2 = _smooth_mesh2
-
-            else:
-                # for ref
-                ori_mesh1 = torch.cat((ori_mesh1, _ori_mesh1[:,-1,...].unsqueeze(1)), 1)
-                smooth_mesh1 = torch.cat((smooth_mesh1, _smooth_mesh1[:,-1,...].unsqueeze(1)), 1)
-
-                # for tgt
-                ori_mesh2 = torch.cat((ori_mesh2, _ori_mesh2[:,-1,...].unsqueeze(1)), 1)
-                smooth_mesh2 = torch.cat((smooth_mesh2, _smooth_mesh2[:,-1,...].unsqueeze(1)), 1)
-
-
-        print("fps (smooth warp):")
-        print(NOF/(time.time() - start_time1))
-
-        #
-        stable_list, out_width, out_height = get_stable_sqe(img1_hr_tensor_list, img2_hr_tensor_list, smooth_mesh1, smooth_mesh2, args.warp_mode, args.fusion_mode)
-
-
-        print("fps (warping & average blending):")
-        print(NOF/(time.time() - start_time1))
-
-
-
-        print(out_width)
-        print(out_height)
-        media_writer = cv2.VideoWriter(media_path, fourcc, fps, (out_width, out_height))
-
-
-        # get the stable video
-        for k in range(len(stable_list)):
-            media_writer.write(stable_list[k].astype(np.uint8 ))
+                    smotion2_1 = smotion_tensor_list2[k-1]
+                    smesh2_1 = rigid_mesh + smotion2_1
+                    tmotion2 = tmotion_tensor_list2[k]
+                    tmesh2 = rigid_mesh + tmotion2
+                    norm_smesh2_1 = get_norm_mesh(smesh2_1, img_h, img_w)
+                    norm_tmesh2 = get_norm_mesh(tmesh2, img_h, img_w)
+                    tsmesh2 = torch_tps_transform_point.transformer(norm_tmesh2, norm_rigid_mesh, norm_smesh2_1)
+                    tsmotion2 = recover_mesh(tsmesh2, img_h, img_w) - smesh2
 
 
-        media_writer.release()
-        print("FPS (write into video):")
-        print(NOF/(time.time() - start_time1))
+                # append
+                smesh_list1.append(smesh1)
+                smesh_list2.append(smesh2)
+                tsmotion_list1.append(tsmotion1)
+                tsmotion_list2.append(tsmotion2)
+
+
+            # step 3: smooth warp
+            ori_mesh1 = 0
+            smooth_mesh1 = 0
+            delta_motion1 = 0
+
+            ori_mesh2 = 0
+            smooth_mesh2 = 0
+            delta_motion2 = 0
+
+            for k in range(len(tmotion_tensor_list1)-6):
+
+                tsmotion_sublist1 = tsmotion_list1[k:k+7]
+                tsmotion_sublist1[0] = tsmotion_sublist1[0] * 0
+
+                tsmotion_sublist2 = tsmotion_list2[k:k+7]
+                tsmotion_sublist2[0] = tsmotion_sublist2[0] * 0
+
+
+                with torch.no_grad():
+                    smooth_batch_out = build_SmoothNet(smooth_net, tsmotion_sublist1, tsmotion_sublist2, smesh_list1[k:k+7], smesh_list2[k:k+7])
+
+                _ori_mesh1 = smooth_batch_out["ori_mesh1"]
+                _smooth_mesh1 = smooth_batch_out["smooth_mesh1"]
+
+                _ori_mesh2 = smooth_batch_out["ori_mesh2"]
+                _smooth_mesh2 = smooth_batch_out["smooth_mesh2"]
+
+
+                if k == 0:
+                    ori_mesh1 = _ori_mesh1
+                    smooth_mesh1 = _smooth_mesh1
+
+                    ori_mesh2 = _ori_mesh2
+                    smooth_mesh2 = _smooth_mesh2
+
+                else:
+                    # for ref
+                    ori_mesh1 = torch.cat((ori_mesh1, _ori_mesh1[:,-1,...].unsqueeze(1)), 1)
+                    smooth_mesh1 = torch.cat((smooth_mesh1, _smooth_mesh1[:,-1,...].unsqueeze(1)), 1)
+
+                    # for tgt
+                    ori_mesh2 = torch.cat((ori_mesh2, _ori_mesh2[:,-1,...].unsqueeze(1)), 1)
+                    smooth_mesh2 = torch.cat((smooth_mesh2, _smooth_mesh2[:,-1,...].unsqueeze(1)), 1)
+
+            stable_list, out_width, out_height = get_stable_sqe(img1_hr_tensor_list, img2_hr_tensor_list, smooth_mesh1, smooth_mesh2, args.warp_mode, args.fusion_mode)
+
+            print(out_width, out_height)
+
+            # 处理中间拼接结果
+            middle_stitch_results = stable_list
+
+            # 保存结果
+            cv2.imwrite(os.path.join(path_result, f'{sv_comp_cfg.input_img_num}_{j+2}.jpg'), stable_list[video_length//2].astype(np.uint8))
 
 
 
