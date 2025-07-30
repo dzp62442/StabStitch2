@@ -13,6 +13,7 @@ pip install -r requirements.txt
 # <p align="center">StabStitch++: Unsupervised Online Video Stitching with Spatiotemporal Bidirectional Warps
 
 ## Introduction
+This is the official implementation for [StabStitch++](https://arxiv.org/pdf/2505.05001) (TPAMI2025).
 
 [Lang Nie](https://nie-lang.github.io/)<sup>1</sup>, [Chunyu Lin](https://faculty.bjtu.edu.cn/8549/)<sup>1</sup>, [Kang Liao](https://kangliao929.github.io/)<sup>2</sup>, [Yun Zhang](http://zhangyunnet.cn/academic/index.html)<sup>3</sup>, [Shuaicheng Liu](http://www.liushuaicheng.org/)<sup>4</sup>, [Yao Zhao](https://faculty.bjtu.edu.cn/5900/)<sup>1</sup>
 
@@ -54,10 +55,10 @@ We have released a [video](https://youtu.be/D06ySUVqAXw) of our results on YouTu
 - [x] 2024.10.17: Release the inference code and pre-trained models.
 - [x] 2024.10.17: Release the training code.
 - [x] 2024.10.17: Release the inference code to stitch multiple videos.
-- [ ] Release the paper of StabStitch++ (journal version of StabStitch).
+- [x] Release the paper of StabStitch++ (journal version of StabStitch).
 
 ## Dataset 
-For the StabStitch-D dataset, please refer to [StabStitch](https://github.com/nie-lang/StabStitc). 
+For the StabStitch-D dataset, please refer to [StabStitch](https://github.com/nie-lang/StabStitch). 
 
 For the collected traditional datasets, they are available at [Google Drive](https://drive.google.com/file/d/14PTsVXy-lbq0fMjTogJ6eY9P8vA0yOxM/view?usp=sharing) or [Baidu Cloud](https://pan.baidu.com/s/1Wj7o-4BgV-Un5JwFcfInEA)(Extraction code: 1234).
 
@@ -86,12 +87,21 @@ If you have any questions about this project, please feel free to drop me an ema
 
 NIE Lang -- nielang@bjtu.edu.cn
 ```
-@inproceedings{nie2024eliminating,
-author={Nie, Lang and Lin, Chunyu and Liao, Kang and Zhang, Yun and Liu, Shuaicheng and Ai, Rui and Zhao, Yao},
-title={Eliminating Warping Shakes for Unsupervised Online Video Stitching},
-booktitle={ECCV},
-year={2024},
-pages={390--407}
+@inproceedings{nie2025eliminating,
+  title={Eliminating Warping Shakes for Unsupervised Online Video Stitching},
+  author={Nie, Lang and Lin, Chunyu and Liao, Kang and Zhang, Yun and Liu, Shuaicheng and Ai, Rui and Zhao, Yao},
+  booktitle={European Conference on Computer Vision},
+  pages={390--407},
+  year={2025},
+  organization={Springer}
+}
+
+@article{nie2025stabstitch++,
+  title={StabStitch++: Unsupervised Online Video Stitching with Spatiotemporal Bidirectional Warps},
+  author={Nie, Lang and Lin, Chunyu and Liao, Kang and Zhang, Yun and Liu, Shuaicheng and Zhao, Yao},
+  journal={IEEE Transactions on Pattern Analysis and Machine Intelligence},
+  year={2025},
+  publisher={IEEE}
 }
 ```
 
