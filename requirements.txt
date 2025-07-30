@@ -1,15 +1,13 @@
-# python 3.8.5
-# pytorch 1.13.1+cu116
-# torchvision 0.14.1+cu116
-
 cmake
-setuptools==59.5.0
+setuptools==65.5.1
 easydict~=1.9
-numpy==1.19.5
+numpy==1.19.5  # 指定
+torch==1.13.1+cu116
+torchvision==0.14.1+cu116
+scikit-image==0.15.0  # 指定
 numba
 opencv-python-headless~=4.5.1.48
 scipy
-scikit-image==0.15.0
 tqdm
 PyYAML
 cython

@@ -1,11 +1,12 @@
 # 1 环境配置
 
 ```shell
-conda create -n stabstitch python=3.8.19
+conda create -n stabstitch python=3.8.5
 conda activate stabstitch
-pip install torch==1.13.1+cu116 torchvision==0.14.1+cu116 torchaudio==0.13.1 -f https://download.pytorch.org/whl/cu116/torch_stable.html
-pip install numpy==1.19.5  # 指定numpy版本，不能超过1.20
-pip install -r requirements.txt  
+conda install -c conda-forge cudatoolkit=11.6  # 若系统 CUDA 版本一致则不需要再安装
+pip install numpy==1.19.5 torch==1.13.1+cu116 torchvision==0.14.1+cu116 torchaudio==0.13.1 -f https://download.pytorch.org/whl/cu116/torch_stable.html
+pip install setuptools==65.5.1
+pip install -r requirements.txt
 ```
 
 ------
