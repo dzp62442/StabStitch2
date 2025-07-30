@@ -582,7 +582,7 @@ if __name__=="__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--gpu', type=str, default='0')
-    parser.add_argument('--test_path', type=str, default='/opt/data/private/nl/Data/StabStitch-D/testing/')
+    parser.add_argument('--test_path', type=str, default=os.path.join('../../Datasets/StabStitch-D/testing/'))
 
 
 

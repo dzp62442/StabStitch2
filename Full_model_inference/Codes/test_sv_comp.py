@@ -195,7 +195,7 @@ def test(args):
     with open('sv_comp/intrinsics.yaml', 'r', encoding='utf-8') as file:
         intrinsics = yaml.safe_load(file)
     dataset = MultiWarpDataset(config=sv_comp_cfg, intrinsics=intrinsics, is_train=False)
-    video_length = 10  # 一张图像复制若干次作为一个视频
+    video_length = 8  # 一张图像复制若干次作为一个视频
 
     # define the network
     spatial_net = SpatialNet()
