@@ -1,5 +1,4 @@
-# 1 环境配置
-
+环境配置
 ```shell
 conda create -n stabstitch python=3.8.5
 conda activate stabstitch
@@ -9,6 +8,11 @@ pip install setuptools==65.5.1
 pip install -r requirements.txt
 ```
 
+进行与 ChatStitch SV-UDIS 的对比实验：
+```bash
+cd Full_model_inference/Codes
+python test_sv_comp.py
+```
 ------
 
 # <p align="center">StabStitch++: Unsupervised Online Video Stitching with Spatiotemporal Bidirectional Warps
