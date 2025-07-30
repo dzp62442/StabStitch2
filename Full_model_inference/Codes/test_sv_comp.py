@@ -28,9 +28,11 @@ plt.rcParams['axes.unicode_minus']=False
 from sv_comp.dataset import MultiWarpDataset
 from omegaconf import OmegaConf
 import yaml
+from loguru import logger
 
 last_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # 项目文件夹
 MODEL_DIR = os.path.join(last_path, 'Full_model_inference', 'full_model_ssd')
+SAVE_RESULT = False
 
 
 
@@ -98,7 +100,7 @@ def get_norm_mesh(mesh, height, width):
 # bs, T, h, w, 2  smooth_path
 def get_stable_sqe(img1_list, img2_list, smooth_mesh1, smooth_mesh2, warp_mode, fusion_mode):
     batch_size, _, img_h, img_w = img2_list[0].shape
-    print(img2_list[0].shape)
+    # print(img2_list[0].shape)
 
     rigid_mesh = get_rigid_mesh(batch_size, img_h, img_w)
     norm_rigid_mesh = get_norm_mesh(rigid_mesh, img_h, img_w)
@@ -121,9 +123,6 @@ def get_stable_sqe(img1_list, img2_list, smooth_mesh1, smooth_mesh2, warp_mode, 
 
     out_width = width_max - width_min
     out_height = height_max - height_min
-
-    print(out_width)
-    print(out_height)
 
     stable_list = []
 
@@ -156,7 +155,35 @@ def get_stable_sqe(img1_list, img2_list, smooth_mesh1, smooth_mesh2, warp_mode, 
 
     return stable_list, out_width.int(), out_height.int()
 
+# bs, T, h, w, 2  smooth_path
+def get_stable_sqe_metric(img1_list, img2_list, smooth_mesh1, smooth_mesh2):
+    batch_size, _, img_h, img_w = img2_list[0].shape
+    # print(img2_list[0].shape)
 
+    rigid_mesh = get_rigid_mesh(batch_size, img_h, img_w)
+    norm_rigid_mesh = get_norm_mesh(rigid_mesh, img_h, img_w)
+
+    stable_list1 = []
+    stable_list2 = []
+    # mesh_tran_list = []
+    for i in range(len(img2_list)):
+
+        mesh1 = smooth_mesh1[:,i,:,:,:]
+        norm_mesh1 = get_norm_mesh(mesh1, img_h, img_w)
+        img1 = (img1_list[i].cuda()+1)*127.5
+
+        mesh2 = smooth_mesh2[:,i,:,:,:]
+        norm_mesh2 = get_norm_mesh(mesh2, img_h, img_w)
+        img2 = (img2_list[i].cuda()+1)*127.5
+
+        mask = torch.ones_like(img2).cuda()
+        img1_warp = torch_tps_transform.transformer(torch.cat([img1, mask], 1), norm_mesh1, norm_rigid_mesh, (img_h, img_w), mode = 'NORMAL')
+        img2_warp = torch_tps_transform.transformer(torch.cat([img2, mask], 1), norm_mesh2, norm_rigid_mesh, (img_h, img_w), mode = 'NORMAL')
+
+        stable_list1.append(img1_warp[0].cpu().detach().numpy().transpose(1,2,0))
+        stable_list2.append(img2_warp[0].cpu().detach().numpy().transpose(1,2,0))
+
+    return stable_list1, stable_list2
 
 def test(args):
 
@@ -208,7 +235,7 @@ def test(args):
 
     print("##################start testing#######################")
 
-    count = 0
+    psnr_list, ssim_list = [], []
 
     for idx in range(len(dataset)):
         # if idx > 5:
@@ -218,18 +245,24 @@ def test(args):
         middle_stitch_results = None  # 中间拼接结果
         origin_w, origin_h = input_imgs[0].shape[1], input_imgs[0].shape[0]
 
+        batch_psnr_avg, batch_ssim_avg = 0, 0  # 当前batch的平均PSNR和SSIM
+        batch_psnr_list, batch_ssim_list = [], []  # 当前batch的PSNR和SSIM列表
+
+        # 创建保存结果文件夹
+        batch_path = dataset.get_path(idx)
+        path_result = os.path.join(batch_path, 'stabstitch2/')
+        os.makedirs(path_result, exist_ok=True)
+        path_warp = os.path.join(batch_path, 'warp/')
+        os.makedirs(path_warp, exist_ok=True)
+        path_mask = os.path.join(batch_path, 'mask/')
+        os.makedirs(path_mask, exist_ok=True)
+
         print(f'---------------{idx}---------------')
 
         for j in range(sv_comp_cfg['input_img_num'] - 1):
-            # 创建保存结果文件夹
-            batch_path = dataset.get_path(idx)
-            path_result = os.path.join(batch_path, 'stabstitch2/')
-            os.makedirs(path_result, exist_ok=True)
-            path_warp = os.path.join(batch_path, 'warp/')
-            os.makedirs(path_warp, exist_ok=True)
-            path_mask = os.path.join(batch_path, 'mask/')
-            os.makedirs(path_mask, exist_ok=True)
-
+            pair_psnr_avg, pair_ssim_avg = 0, 0  # 当前这一对视频的平均PSNR和SSIM
+            pair_psnr_list, pair_ssim_list = [], []  # 当前这一对视频的PSNR和SSIM列表
+            
             # 生成待拼接的两路视频
             if j == 0:
                 img1_list = [input_imgs[j]] * video_length
@@ -287,7 +320,6 @@ def test(args):
                 img2_tensor = torch.tensor(img2).unsqueeze(0)
                 img2_tensor_list.append(img2_tensor)
 
-
             # motion estimation
             for k in range(0, len(img2_list)):
 
@@ -305,7 +337,6 @@ def test(args):
                 temporal_batch_out2 = build_TemporalNet(temporal_net, img2_tensor_list)
             tmotion_tensor_list1 = temporal_batch_out1['motion_list']
             tmotion_tensor_list2 = temporal_batch_out2['motion_list']
-
 
             ##############################################
             #############   data preparation  ############
@@ -343,13 +374,11 @@ def test(args):
                     tsmesh2 = torch_tps_transform_point.transformer(norm_tmesh2, norm_rigid_mesh, norm_smesh2_1)
                     tsmotion2 = recover_mesh(tsmesh2, img_h, img_w) - smesh2
 
-
                 # append
                 smesh_list1.append(smesh1)
                 smesh_list2.append(smesh2)
                 tsmotion_list1.append(tsmotion1)
                 tsmotion_list2.append(tsmotion2)
-
 
             # step 3: smooth warp
             ori_mesh1 = 0
@@ -368,7 +397,6 @@ def test(args):
                 tsmotion_sublist2 = tsmotion_list2[k:k+7]
                 tsmotion_sublist2[0] = tsmotion_sublist2[0] * 0
 
-
                 with torch.no_grad():
                     smooth_batch_out = build_SmoothNet(smooth_net, tsmotion_sublist1, tsmotion_sublist2, smesh_list1[k:k+7], smesh_list2[k:k+7])
 
@@ -377,7 +405,6 @@ def test(args):
 
                 _ori_mesh2 = smooth_batch_out["ori_mesh2"]
                 _smooth_mesh2 = smooth_batch_out["smooth_mesh2"]
-
 
                 if k == 0:
                     ori_mesh1 = _ori_mesh1
@@ -395,19 +422,70 @@ def test(args):
                     ori_mesh2 = torch.cat((ori_mesh2, _ori_mesh2[:,-1,...].unsqueeze(1)), 1)
                     smooth_mesh2 = torch.cat((smooth_mesh2, _smooth_mesh2[:,-1,...].unsqueeze(1)), 1)
 
+            # 生成视频拼接结果并保存
             stable_list, out_width, out_height = get_stable_sqe(img1_hr_tensor_list, img2_hr_tensor_list, smooth_mesh1, smooth_mesh2, args.warp_mode, args.fusion_mode)
-
-            print(out_width, out_height)
+            # print(out_width, out_height)
+            if SAVE_RESULT:
+                cv2.imwrite(os.path.join(path_result, f'{sv_comp_cfg.input_img_num}_{j+2}.jpg'), stable_list[video_length//2].astype(np.uint8))
 
             # 处理中间拼接结果
             middle_stitch_results = stable_list
 
-            # 保存结果
-            cv2.imwrite(os.path.join(path_result, f'{sv_comp_cfg.input_img_num}_{j+2}.jpg'), stable_list[video_length//2].astype(np.uint8))
+            # 计算指标
+            stable_list1, stable_list2 = get_stable_sqe_metric(img1_tensor_list, img2_tensor_list, smooth_mesh1, smooth_mesh2)
+            for k in range(len(stable_list1)):
+                # calculate PSNR/SSIM
+                _img1_warp = stable_list1[k][...,0:3]
+                _img1_warp_mask = stable_list1[k][...,3:6]
+                _img2_warp = stable_list2[k][...,0:3]
+                _img2_warp_mask = stable_list2[k][...,3:6]
+                _ovmask = _img1_warp_mask * _img2_warp_mask
+                psnr_one = skimage.measure.compare_psnr(_img1_warp*_ovmask, _img2_warp*_ovmask, 255)
+                ssim_one = skimage.measure.compare_ssim(_img1_warp*_ovmask, _img2_warp*_ovmask, data_range=255, multichannel=True)
+                pair_psnr_list.append(psnr_one)
+                pair_ssim_list.append(ssim_one)
 
+            pair_psnr_avg = np.mean(pair_psnr_list)
+            pair_ssim_avg = np.mean(pair_ssim_list)
+            print(f"pair_psnr_list: {pair_psnr_list}, pair_psnr_avg: {pair_psnr_avg}")
+            print(f"pair_ssim_list: {pair_ssim_list}, pair_ssim_avg: {pair_ssim_avg}")
 
+            batch_psnr_list.append(pair_psnr_avg)
+            batch_ssim_list.append(pair_ssim_avg)
 
+        batch_psnr_avg = np.mean(batch_psnr_list)
+        batch_ssim_avg = np.mean(batch_ssim_list)
+        print(f"batch_psnr_list: {batch_psnr_list}, batch_psnr_avg: {batch_psnr_avg}")
+        print(f"batch_ssim_list: {batch_ssim_list}, batch_ssim_avg: {batch_ssim_avg}")
 
+        psnr_list.append(batch_psnr_avg)
+        ssim_list.append(batch_ssim_avg)
+
+    logger.info('<==================== Analysis ===================>')
+    total_samples = len(dataset)
+    failure_num = 0  # TODO: 计算失败数量
+    thirty_percent_index = int((total_samples-failure_num) * 0.3)
+    sixty_percent_index = int((total_samples-failure_num) * 0.6)
+    logger.info(f'Fail num: {failure_num}, total num: {total_samples}, success num: {total_samples-failure_num}')
+    
+    psnr_list.sort(reverse = True)
+    psnr_list_30 = psnr_list[0 : thirty_percent_index]
+    psnr_list_60 = psnr_list[thirty_percent_index: sixty_percent_index]
+    psnr_list_100 = psnr_list[sixty_percent_index: -1]
+    print("[psnr] top 30%: ", np.mean(psnr_list_30))
+    print("[psnr] top 30~60%: ", np.mean(psnr_list_60))
+    print("[psnr] top 60~100%: ", np.mean(psnr_list_100))
+    logger.info('[psnr] average: {}'.format(np.mean(psnr_list)))
+
+    ssim_list.sort(reverse = True)
+    ssim_list_30 = ssim_list[0 : thirty_percent_index]
+    ssim_list_60 = ssim_list[thirty_percent_index: sixty_percent_index]
+    ssim_list_100 = ssim_list[sixty_percent_index: -1]
+    print("[ssim] top 30%: ", np.mean(ssim_list_30))
+    print("[ssim] top 30~60%: ", np.mean(ssim_list_60))
+    print("[ssim] top 60~100%: ", np.mean(ssim_list_100))
+    logger.info('[ssim] average: {}'.format(np.mean(ssim_list)))
+                
 
 
     print("##################end testing#######################")
