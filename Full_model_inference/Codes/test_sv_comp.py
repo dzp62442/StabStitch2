@@ -32,7 +32,7 @@ from loguru import logger
 
 last_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # 项目文件夹
 MODEL_DIR = os.path.join(last_path, 'Full_model_inference', 'full_model_ssd')
-SAVE_RESULT = False
+SAVE_RESULT = True
 
 
 
